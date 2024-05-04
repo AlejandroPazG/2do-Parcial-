@@ -1,0 +1,400 @@
+#include <stdint.h>
+//#include "stm32l053xx.h"
+#include "stm32l053xx.h"
+
+#if !defined(__SOFT_FP__) && defined(__ARM_FP)
+#warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
+#endif
+
+#define ESPERA_PRIMER_VALOR 0
+#define ESPERA_SEGUNDO_VALOR 1
+#define PROCESANDO_OPERACION 2
+
+void keyboard_config();
+void print_bcd_7_segment_decoder_CC(uint8_t);
+void delayMs(int n);
+void key_pressed();
+void init();
+void calculador();
+
+void serial();
+
+uint8_t valor1 = 0; 					//VARIABLE PARA GUARDAR EL PRIMER VALOR INGRESADO
+uint8_t valor2 = 0; 					//VARIABLE PARA GUARDAR EL SEGUNDO VALOR INGRESADO
+uint8_t operacion = 0;				 	//VALOR DEL SEGUNDO VALOR NOMBRADO
+uint8_t operacion1 = 0; 				//
+
+uint8_t estado = ESPERA_PRIMER_VALOR; 			//ESTADO INICIAL DE LA CALCULADORA
+uint8_t val = 0;						//INICIALIZACION DE LA VARIABLE CON VALOR 0
+
+int main(void){
+
+init();
+
+while(1){								//CICLO INFINITO
+keyboard_config();						//LLAMA LA FUNCION DE CONFIGURACION DE LAS FILAS
+
+key_pressed(); 							//LLAMA LA FUNCION DE MUX DE COLUMNAS PARA MOSTRAR EN DISPLAYS
+
+calculador();
+
+//serial();								//LLAMA LA FUNCION PARA COMUNICACION SERIAL
+	}
+}
+
+
+void init(){
+
+RCC->IOPENR |=0x01<<0; 					//HABILITA RELOJ DE GPIOA
+RCC->IOPENR |=0x01<<1; 					//HABILITA RELOJ DE GPIOB
+RCC->IOPENR |=0x01<<2; 					//HABILITA RELOJ DE GPIOC
+
+GPIOA->MODER &=~(1<<1); 				//PA0 HABILITA COMUN DE DISPLAY 0
+GPIOA->MODER &=~(1<<3); 				//PA1 HABILITA COMUN DE DISPLAY 1
+
+GPIOA->BSRR = (0x03<<16); 				//COLOCA 0 EN PA0 Y PA1
+
+GPIOB->MODER &=~(1<<17); 				//PB8 SALIDA DEL SEGMENTO A
+GPIOB->MODER &=~(1<<5); 				//PB2 SALIDA DEL SEGMENTO B
+GPIOB->MODER &=~(1<<7); 				//PB3 SALIDA DEL SEGMENTO C
+GPIOB->MODER &=~(1<<9); 				//PB4 SALIDA DEL SEGMENTO D
+GPIOB->MODER &=~(1<<13);				//PB6 SALIDA DEL SEGMENTO E
+GPIOB->MODER &=~(1<<15); 				//PB7 SALIDA DEL SEGMENTO F
+GPIOB->MODER &=~(1<<19); 				//PB9 SALIDA DEL SEGMENTO G
+
+
+USART2->BRR = (0xDA); 					//SETEA EL BAUD RATE
+USART2->CR1 |=(1<<3);					//HABILITA TX
+USART2->CR1 |=(1<<2); 					//HABILITA RX
+
+
+USART2->CR1 |=(1<<0);					//HABILITA EL USART
+
+}
+void keyboard_config(){
+
+				//CONFIG DE FILAS
+				//PC5 PARA FILA 0
+GPIOC->MODER &=~(1<<10); 				//SE SETEA COMO INPUT
+GPIOC->MODER &=~(1<<11);
+GPIOC->PUPDR |=(1<<10); 				//HABILITA EL PULL-UP DE PC5
+
+				//PC6 PARA FILA 1
+GPIOC->MODER &=~(1<<12); 				//SE SETEA COMO INPUT
+GPIOC->MODER &=~(1<<13);
+GPIOC->PUPDR |=(1<<12); 				//HABILITA EL PULL-UP DE PC6
+
+				//PC8 PARA FILA 2
+GPIOC->MODER &=~(1<<16); 				//SE SETEA COMO INPUT
+GPIOC->MODER &=~(1<<17);
+GPIOC->PUPDR |=(1<<16); 				//HABILITA EL PULL-UP DE PC8
+
+				//PC9 PARA FILA 3
+GPIOC->MODER &=~(1<<18); 				//SE SETEA COMO INPUT
+GPIOC->MODER &=~(1<<19);
+GPIOC->PUPDR |=(1<<18); 				//HABILITA EL PULL-UP DE PC9
+
+				//COLUMN CONFIG
+GPIOB->MODER &=~(1<<23);				//PB11 COLUMNA0 SALIDA HIGH
+										//SE SETEA COMO INPUT
+
+GPIOC->MODER &=~(1<<15); 				//PC7 COLUMNA1 SALIDA HIGH
+										//SE SETEA COMO INPUT
+
+GPIOA->MODER &=~(1<<19); 				//PA9 COLUMNA2 SALIDA HIGH
+										//SE SETEA COMO INPUT
+
+GPIOC->MODER &=~(1<<9); 				//PC4 COLUMNA3 SALIDA HIGH
+										//SE SETEA COMO INPUT
+}
+
+void key_pressed(){
+
+					//ESCANEA COLUMNA0
+GPIOB->ODR &=~(1<<11); 					//SETEA PB11 COMO 0
+GPIOC->ODR |=(1<<7); 					//SETEA PC7 COMO 1
+GPIOA->ODR |=(1<<9); 					//SETEA PA9 COMO 1
+GPIOC->ODR |=(1<<4); 					//SETEA PC4 COMO 1
+delayMs(5);
+
+if(!(GPIOC->IDR & 0x20)){ 				//EVALUA FILA 0
+										//INDICA SI SE PRESIONO LA TECLA 1
+print_bcd_7_segment_decoder_CC(0x01);	 //DESPLIEGA EL #1
+GPIOA->ODR |=(1<<1); 					//HABILITA EL DISPLAY 0
+delayMs(5);
+
+//GPIOA->BSRR = (0x03<<16); 			//RESETEA LOS BITS DE LOS DISPLAYS
+}else if(!(GPIOC->IDR & 0x40)){ 		//EVALUA FILA 1
+										//INICA SI SE PRESIONO LA TECLA 4
+print_bcd_7_segment_decoder_CC(0x04); 	//DESPLIEGA EL #4
+GPIOA->ODR |=(1<<1); 					//HABILITA EL DISPLAY 0
+delayMs(5);
+//GPIOA->BSRR = (0x03<<16); 			//RESETEA LOS BITS DE LOS DISPLAYS
+
+}else if(!(GPIOC->IDR & 0x100)){ 		//EVALUA FILA 2
+										//INDICA SI SE PRESIONO LA TECLA 7
+print_bcd_7_segment_decoder_CC(0x07);	//DESPLIEGA EL #7
+GPIOA->ODR |=(1<<1);					//HABILITA EL DISPLAY 0
+delayMs(5);
+//GPIOA->BSRR = (0x03<<16);				//RESETEA LOS BITS DE LOS DISPLAYS
+
+
+}else if(!(GPIOC->IDR & 0x200)){ 		//EVALUANDO FILA 3
+
+
+										//SE PRESIONO LA TECLA *
+if(estado == ESPERA_PRIMER_VALOR){ 		//EN ESPERA DE INGRESAR EL PRIMER VALOR
+valor1 = val; 							//ALMACENA EL PRIMER VALOR
+estado = ESPERA_SEGUNDO_VALOR; 			//EN ESPERA DE INGRESAR EL SEGUNDO VALOR
+}
+else if(estado == ESPERA_SEGUNDO_VALOR){ //EN ESPERA DE INGRESAR EL SEGUNDO VALOR
+valor2 = val; 							//ALMACENA EL SEGUNDO VALOR
+estado = PROCESANDO_OPERACION; 			//REALIZA LA OPERACION INDICADA
+}
+
+delayMs(5);
+
+}
+
+					//ESCANEA COLUMNA1
+GPIOB->ODR |=(1<<11);					//SETEA PB11 COMO 1
+GPIOC->ODR &=~(1<<7); 					//SETEA PC7 COMO 0
+GPIOA->ODR |=(1<<9); 					//SETEA PA9 COMO 1
+GPIOC->ODR |=(1<<4); 					//SETEA PC4 COMO 1
+delayMs(5);
+
+if(!(GPIOC->IDR & 0x20)){ 				//EVALUA FILA 0
+										//INDICA SI SE PRESIONO LA TECLA 2
+print_bcd_7_segment_decoder_CC(0x02);	//DESPLIEGA EL #2
+GPIOA->ODR |=(1<<1);					//HABILITA EL DISPLAY 0
+delayMs(5);
+//GPIOA->BSRR = (0x03<<16);
+
+}else if(!(GPIOC->IDR & 0x40)){ 		//EVALUA FILA 1
+
+print_bcd_7_segment_decoder_CC(0x05);
+GPIOA->ODR |=(1<<1);
+delayMs(5);
+//GPIOA->BSRR = (0x03<<16);
+
+}else if(!(GPIOC->IDR & 0x100)){ 		//EVALUA FILA 2
+//SE PRESIONO LA TECLA 8
+
+print_bcd_7_segment_decoder_CC(0x08);
+GPIOA->ODR |=(1<<1);
+delayMs(5);
+//GPIOA->BSRR = (0x03<<16);
+
+}else if(!(GPIOC->IDR & 0x200)){ 		//EVALUA FILA 3
+
+
+print_bcd_7_segment_decoder_CC(0x00);	//INDICA SI SE PRESIONO LA TECLA 0
+GPIOA->ODR |=(1<<1);
+delayMs(5);
+//GPIOA->BSRR = (0x03<<16);
+
+}
+					//ESCANEA COLUMNA2
+GPIOB->ODR |=(1<<11); 					//SETEA PB11 COMO 1
+GPIOC->ODR |=(1<<7); 					//SETEA PC7 COMO 1
+GPIOA->ODR &=~(1<<9); 					//SETEA PA9 COMO 0
+GPIOC->ODR |=(1<<4); 					//SETEA PC4 COMO 1
+delayMs(5);
+
+if(!(GPIOC->IDR & 0x20)){ 				//EVALUA FILA 0
+print_bcd_7_segment_decoder_CC(0x03);	//INDICA SI SE PRESIONO LA TELCA 3
+GPIOA->ODR |=(1<<1);
+delayMs(5);
+//GPIOA->BSRR = (0x03<<16);
+
+}else if(!(GPIOC->IDR & 0x40)){ 		//EVALUA FILA 1
+print_bcd_7_segment_decoder_CC(0x06);	//INIDCA SI SE PRESIONO LA TECLA 6
+GPIOA->ODR |=(1<<1);
+delayMs(5);
+//GPIOA->BSRR = (0x03<<16);
+
+}else if(!(GPIOC->IDR & 0x100)){ 		//EVALUA FILA 2
+print_bcd_7_segment_decoder_CC(0x09);	//INDICA SI SE PRESIONO LA TELCA 9
+GPIOA->ODR |=(1<<1);
+delayMs(5);
+//GPIOA->BSRR = (0x03<<16);
+
+}else if(!(GPIOC->IDR & 0x200)){ 		//EVALUA FILA 3
+
+
+valor1=0;
+valor2=0;
+estado=0;
+
+GPIOA->BSRR = (0x03<<16);				//RESETEA LOS BITS DE LOS DISPLAYS
+delayMs(5);
+
+}
+					//ESCANEA COLUMNA 3
+GPIOB->ODR |=(1<<11); 					//SETEA PB11 COMO 1
+GPIOC->ODR |=(1<<7); 					//SETEA PC7 COMO 1
+GPIOA->ODR |=(1<<9); 					//SETEA PA9 COMO 1
+GPIOC->ODR &=~(1<<4); 					//SETEA PC4 COMO 0
+delayMs(5);
+
+if(!(GPIOC->IDR & 0x20)){ //EVALUANDO FILA 0
+
+
+
+						//SUMA
+if(estado == PROCESANDO_OPERACION){		//ESPERANDO INGRESAR LA OPERACION
+operacion = valor1 + valor2;			//REALIZA LA OPERACION INDICADA
+
+print_bcd_7_segment_decoder_CC(operacion); //DESPLIEGA EL RESULTADO DE LA OPERACION
+estado = ESPERA_PRIMER_VALOR;				//VUELVE AL ESTADO INICAIL
+}
+delayMs(5);
+
+
+}else if(!(GPIOC->IDR & 0x40)){ 			//EVALUA FILA 1
+							//RESTA
+if(estado == PROCESANDO_OPERACION){ 		///ESPERANDO INGRESAR LA OPERACION
+operacion = valor2 - valor1;				//REALIZA LA OPERACION INDICADA
+
+print_bcd_7_segment_decoder_CC(operacion);	//DESPLIEGA EL RESULTADO DE LA OPERACION
+estado = ESPERA_PRIMER_VALOR;				//VUELVE AL ESTADO INICIAL
+}
+delayMs(5);
+
+
+}else if(!(GPIOC->IDR & 0x100)){ 			//EVALUA FILA 2
+
+							//MULTIPLICACION
+if(estado == PROCESANDO_OPERACION){ 		//ESPERANDO INGRESAR LA OPERACION
+operacion = valor2 * valor1;				////REALIZA LA OPERACION INDICADA
+
+print_bcd_7_segment_decoder_CC(operacion);	//DESPLIEGA EL RESULTADO DE LA OPERACION
+estado = ESPERA_PRIMER_VALOR;				//VUELVE AL ESTADO INICIAL
+}
+delayMs(5);
+}
+}
+
+void print_bcd_7_segment_decoder_CC(uint8_t val){
+
+
+valor1 = val; 								//REFRESCA EL VALOR DESPLEGADO
+if(estado == ESPERA_PRIMER_VALOR){ 			//EN ESPERA DE INGRESAR EL PRIMER VALOR
+valor1 = val; 								//GUARDA EL PRIMER VALOR
+estado = ESPERA_SEGUNDO_VALOR;				//EN ESPERA DE INGRESAR EL SEGUNDO VALOR
+}
+else if(estado == ESPERA_SEGUNDO_VALOR){ 	//EN ESPERA DE INGRESAR EL SEGUNDO VALOR
+valor2 = val; 								//GUARDA EL SEGUNDO VALOR
+estado = PROCESANDO_OPERACION; 				//VUELVE AL ESTADO INICIAL
+}
+
+
+if(val==0x00){ 								//DESPLIEGA NUMERO 0 EN DISPLAY
+GPIOB->BSRR=(0x3DC<<16); 					//RESETEA TODOS LOS BITS A 0
+GPIOB->ODR |=0x01<<8; //SEGMENTO A
+GPIOB->ODR |=0x01<<2; //SEGMENTO B
+GPIOB->ODR |=0x01<<3; //SEGMENTO C
+GPIOB->ODR |=0x01<<4; //SEGMENTO D
+GPIOB->ODR |=0x01<<6; //SEGMENTO E
+GPIOB->ODR |=0x01<<7; //SEGMENTO F
+
+}else if(val==0x01){ 						//DESPLIEGAL NUMERO 1 EN DISPLAY
+GPIOB->BSRR=(0x3DC<<16); 					//RESETEA TODOS LOS BITS A 0
+GPIOB->ODR |=0x01<<2; //SEGMENTO B
+GPIOB->ODR |=0x01<<3; //SEGMENTO C
+
+}else if(val==0x02){ 						//DESPLIEGA NUMERO 2 EN DISPLAY
+GPIOB->BSRR=(0x3DC<<16); 					//RESETEA TODOS LOS BITS A 0
+GPIOB->ODR |=0x01<<8; //SEGMENTO A
+GPIOB->ODR |=0x01<<2; //SEGMENTO B
+GPIOB->ODR |=0x01<<9; //SEGMENTO G
+GPIOB->ODR |=0x01<<6; //SEGMENTO E
+GPIOB->ODR |=0x01<<4; //SEGMENTO D
+
+}else if(val==0x03){ 						//DESPLIEGA NUMERO3 EN DISPLAY
+GPIOB->BSRR=(0x3DC<<16); 					//RESETEA TODOS LOS BITS A 0
+GPIOB->ODR |=0x01<<8; //SEGMENTO A
+GPIOB->ODR |=0x01<<2; //SEGMENTO B
+GPIOB->ODR |=0x01<<9; //SEGMENTO G
+GPIOB->ODR |=0x01<<3; //SEGMENTO C
+GPIOB->ODR |=0x01<<4; //SEGMENTO D
+
+}else if(val==0x04){ 						//DESPLIEGA NUMERO 4 EN DISPLAY
+GPIOB->BSRR=(0x3DC<<16); 					//RESETEA TODOS LOS BITS A 0
+GPIOB->ODR |=0x01<<7; //SEGMENTO F
+GPIOB->ODR |=0x01<<9; //SEGMENTO G
+GPIOB->ODR |=0x01<<2; //SEGMENTO B
+GPIOB->ODR |=0x01<<3; //SEGMENTO C
+
+}else if(val==0x05){ 						//DESPLIEGA NUMERO 5 EN DISPLAY
+GPIOB->BSRR=(0x3DC<<16); 					//RESETEA TODOS LOS BITS A 0
+GPIOB->ODR |=0x01<<8; //SEGMENTO A
+GPIOB->ODR |=0x01<<7; //SEGMENTO F
+GPIOB->ODR |=0x01<<9; //SEGMENTO G
+GPIOB->ODR |=0x01<<3; //SEGMENTO C
+GPIOB->ODR |=0x01<<4; //SEGMENTO D
+
+}else if(val==0x06){ 						//DESPLIEGA NUMERO 6 EN DISPLAY
+GPIOB->BSRR=(0x3DC<<16); 					//RESETEA TODOS LOS BITS A 0
+GPIOB->ODR |=0x01<<7; //SEGMENTO F
+GPIOB->ODR |=0x01<<6; //SEGMENTO E
+GPIOB->ODR |=0x01<<4; //SEGMENTO D
+GPIOB->ODR |=0x01<<3; //SEGMENTO C
+GPIOB->ODR |=0x01<<9; //SEGMENTO G
+
+}else if(val==0x07){ 						//DESPLIEGA NUMERO 7 EN DISPLAY
+GPIOB->BSRR=(0x3DC<<16); 					//RESETEA TODOS LOS BITS A 0
+GPIOB->ODR |=0x01<<8; //SEGMENTO A
+GPIOB->ODR |=0x01<<2; //SEGMENTO B
+GPIOB->ODR |=0x01<<3; //SEGMENTO C
+
+}else if(val==0x08){ 						//DESPLIEGA NUMERO 8 EN DISPLAY
+GPIOB->BSRR=(0x3DC<<16); 					//RESETEA TODOS LOS BITS A 0
+GPIOB->ODR |=0x01<<8; //SEGMENTO A
+GPIOB->ODR |=0x01<<2; //SEGMENTO B
+GPIOB->ODR |=0x01<<3; //SEGMENTO C
+GPIOB->ODR |=0x01<<4; //SEGMENTO D
+GPIOB->ODR |=0x01<<6; //SEGMENTO E
+GPIOB->ODR |=0x01<<7; //SEGMENTO F
+GPIOB->ODR |=0x01<<9; //SEGMENTO G
+
+}else if(val==0x09){ 						//DESPLIEGA NUMERO 9 EN DISPLAY
+GPIOB->BSRR=(0x3DC<<16); 					//RESETA TODOS LOS BITS A 0
+GPIOB->ODR |=0x01<<9; //SEGMENTO G
+GPIOB->ODR |=0x01<<7; //SEGMENTO F
+GPIOB->ODR |=0x01<<8; //SEGMENTO A
+GPIOB->ODR |=0x01<<2; //SEGMENTO B
+GPIOB->ODR |=0x01<<3; //SEGMENTO C
+
+}
+}
+
+
+void delayMs(int n){
+int i;
+for(; n > 0; n--)
+for(i = 0; i < 240; i++);
+}
+
+void calculador(){
+if (estado == 'A')
+operacion = valor1 + valor2;
+if(estado == 'B')
+operacion = valor1 - valor2;
+if (estado =='C')
+operacion = valor1 * valor2;
+}
+
+//void serial(){
+// while(1){
+// if((USART2->RDR == 'SUMA')){
+// operacion1 = 1+1;
+// }
+// if((USART2->RDR == 'RESTA')){
+// operacion1 = valor1 - valor2;
+// }
+// if((USART2->RDR == 'MULTIPLICACION')){
+// operacion1 = valor1 * valor2;
+// }
+// }
+//}
